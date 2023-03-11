@@ -1,4 +1,4 @@
-{{- if .Values.routefixer.enabled -}}
+{{- if .Values.routefixer.enable -}}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
