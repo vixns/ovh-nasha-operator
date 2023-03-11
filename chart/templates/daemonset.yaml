@@ -1,0 +1,57 @@
+{{- if .Values.routefixer.enabled -}}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  labels:
+    {{- include "ovh-nasha-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+  name: {{ include "ovh-nasha-operator.fullname" . }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ovh-nasha-operator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: controller
+  template:
+    metadata:
+      labels:
+        {{- include "ovh-nasha-operator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: controller
+    spec:
+      containers:
+        - name: route-fixer
+          image: {{ .Values.image.name }}
+          command:
+            - /route-fixer
+          resources:
+            limits:
+              memory: 64Mi
+            requests:
+              cpu: 5m
+              memory: 32Mi
+          volumeMounts:
+            - name: ovh-nasha
+              mountPath: /nasha
+              readOnly: true
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+      volumes:
+        - name: ovh-nasha
+          configMap:
+            name: ovh-nasha
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: {{ template "ovh-nasha-operator.serviceAccountName" . }}
+      serviceAccountName: {{ template "ovh-nasha-operator.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 30
+    updateStrategy:
+      rollingUpdate:
+        maxSurge: 0
+        maxUnavailable: 1
+      type: RollingUpdate
+{{- end }}

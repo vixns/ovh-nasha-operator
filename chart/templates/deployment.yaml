@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    {{- include "ovh-nasha-operator.labels" . | nindent 4 }}
+    app.kubernetes.io/component: operator
+  name: {{ include "ovh-nasha-operator.fullname" . }}
+  namespace: {{ .Release.Namespace | quote }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ovh-nasha-operator.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: operator
+  template:
+    metadata:
+      labels:
+        {{- include "ovh-nasha-operator.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: operator
+    spec:
+      containers:
+        - name: {{ include "ovh-nasha-operator.fullname" . }}
+          image: {{ .Values.image.name }}
+          command: 
+            - /ovh-nasha-operator
+          resources:
+            limits:
+              memory: 64Mi
+            requests:
+              cpu: 5m
+              memory: 32Mi
+          volumeMounts:
+            - name: ovh-nasha
+              mountPath: /nasha
+              readOnly: true
+          env:
+            - name: OVH_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: nasha-ovh.conf
+                  key: endpoint
+            - name: OVH_CONSUMER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nasha-ovh.conf
+                  key: consumer
+            - name: OVH_APPLICATION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: nasha-ovh.conf
+                  key: key
+            - name: OVH_APPLICATION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: nasha-ovh.conf
+                  key: secret
+            - name: LOG_LEVEL
+              value: debug
+      volumes:
+        - name: ovh-nasha
+          configMap:
+            name: ovh-nasha
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      serviceAccount: {{ template "ovh-nasha-operator.serviceAccountName" . }}
+      serviceAccountName: {{ template "ovh-nasha-operator.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 30

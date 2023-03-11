@@ -1,0 +1,18 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    {{- include "ovh-nasha-operator.labels" . | nindent 4 }}
+  name: {{ include "ovh-nasha-operator.fullname" . }}
+  namespace: {{ .Release.Namespace | quote }}
+rules:
+- apiGroups:
+  - ""
+  resourceNames:
+  - ovh-nasha
+  resources:
+  - configmaps
+  verbs:
+  - get
+{{- end }}
