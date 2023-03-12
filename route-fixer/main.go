@@ -11,30 +11,10 @@ import (
 	"github.com/vishvananda/netlink"
 )
 
-// Params
-type AccessPosttParams struct {
-	Ip         string `json:"ip"`
-	AccessType string `json:"type"`
-}
-
-type AccessIP struct {
-	Ip         string `json:"ip"`
-	AccessType string `json:"type"`
-	AccessId   int    `json:"accessId"`
-}
-
 type NasPartition struct {
 	Ip    string `json:"ip"`
 	Name  string `json:"name"`
 	NasHa string `json:"nasha"`
-}
-
-func RequiredEnv(envName string) string {
-	env, isSet := os.LookupEnv(envName)
-	if !isSet || len(env) == 0 {
-		logrus.Fatal("Error: Required env var ", envName, " is missing.")
-	}
-	return env
 }
 
 func OptionalEnv(envName string, defaultValue string) string {
