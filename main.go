@@ -22,16 +22,17 @@ type AccessPosttParams struct {
 	AccessType string `json:"type"`
 }
 
-type AccessIP struct {
+type PartitionAccess struct {
 	Ip         string `json:"ip"`
 	AccessType string `json:"type"`
 	AccessId   int    `json:"accessId"`
 }
 
 type NasPartition struct {
-	Ip    string `json:"ip"`
-	Name  string `json:"name"`
-	NasHa string `json:"nasha"`
+	Ip        string `json:"ip"`
+	Name      string `json:"name"`
+	NasHa     string `json:"nasha"`
+	Exclusive bool   `json:"exclusive"`
 }
 
 func OptionalEnv(envName string, defaultValue string) string {
@@ -51,6 +52,12 @@ type NodeWathingController struct {
 }
 
 func (c *NodeWathingController) Run(stopCh chan struct{}) error {
+	// Cleanup exclusive partitions
+	for _, p := range c.nasHaPartitions {
+		if p.Exclusive {
+			c.deleteAllPartitionAccesses(p)
+		}
+	}
 	// Starts all the shared informers that have been created by the factory so
 	// far.
 	c.informerFactory.Start(stopCh)
@@ -59,6 +66,39 @@ func (c *NodeWathingController) Run(stopCh chan struct{}) error {
 		return fmt.Errorf("failed to sync")
 	}
 	return nil
+}
+
+func (c *NodeWathingController) getPartitonAccessIps(p NasPartition) ([]string, error) {
+	var accesses []string
+	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", p.NasHa, p.Name), &accesses); err != nil {
+		return nil, err
+	}
+	return accesses, nil
+}
+
+func (c *NodeWathingController) deleteAllPartitionAccesses(p NasPartition) {
+	ips, err := c.getPartitonAccessIps(p)
+	if err != nil {
+		logrus.Errorf("Cannot get access list for partition %s/%s - %q", p.NasHa, p.Name, err)
+	}
+	for _, i := range ips {
+		c.deletePartitionAccessForIp(p, i)
+	}
+}
+
+func (c *NodeWathingController) addPartitionAccessForIp(p NasPartition, ip string) {
+	params := &AccessPosttParams{Ip: ip, AccessType: "readwrite"}
+	if err := c.ovhClient.Post(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", p.NasHa, p.Name), &params, nil); err != nil {
+		logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", ip, p, err)
+	}
+	logrus.Infof("%s access on %s/%s nasha granted.", ip, p.NasHa, p.Name)
+}
+
+func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip string) {
+	if err := c.ovhClient.Delete(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", p.NasHa, p.Name, ip), nil); err != nil {
+		logrus.Errorf("Error deleting access to ip %s on %s/%s nasha - %v", ip, p.NasHa, p.Name, err)
+	}
+	logrus.Infof("%s access on %s/%s nasha deleted.", p, p.NasHa, p.Name)
 }
 
 func (c *NodeWathingController) nodeAdd(obj interface{}) {
@@ -73,11 +113,7 @@ func (c *NodeWathingController) nodeAdd(obj interface{}) {
 		if !c.isNasPartitionAccessExists(partition, externalIp) {
 			logrus.Debugf("%s not in %s/%s access list.", &externalIp, partition.NasHa, partition.Name)
 			// node access missing, let's add it.
-			params := &AccessPosttParams{Ip: externalIp, AccessType: "readwrite"}
-			if err := c.ovhClient.Post(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", partition.NasHa, partition.Name), &params, nil); err != nil {
-				logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", externalIp, partition, err)
-			}
-			logrus.Infof("%s access on %s/%s nasha granted.", externalIp, partition.NasHa, partition.Name)
+			c.addPartitionAccessForIp(partition, externalIp)
 		}
 	}
 }
@@ -93,10 +129,7 @@ func (c *NodeWathingController) nodeDelete(obj interface{}) {
 	for _, partition := range c.nasHaPartitions {
 		if c.isNasPartitionAccessExists(partition, externalIp) {
 			// node no longer exists, delete access
-			if err := c.ovhClient.Delete(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", partition.NasHa, partition.Name, externalIp), nil); err != nil {
-				logrus.Errorf("Error deleting access to ip %s on %s/%s nasha - %v", externalIp, partition.NasHa, partition.Name, err)
-			}
-			logrus.Infof("%s access on %s/%s nasha deleted.", externalIp, partition.NasHa, partition.Name)
+			c.deletePartitionAccessForIp(partition, externalIp)
 		}
 	}
 }
@@ -112,12 +145,12 @@ func (c *NodeWathingController) nodeExternalIp(node *v1.Node) (string, error) {
 }
 
 func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip string) bool {
-	var ipAccess AccessIP
+	var ipAccess PartitionAccess
 	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", part.NasHa, part.Name, ip), &ipAccess); err != nil {
 		logrus.Debugf("Error getting %s nasha ip access on partition %s for ip %s - %v", part.NasHa, part.Name, ip, err)
 		return false
 	}
-	return ipAccess != (AccessIP{})
+	return ipAccess != (PartitionAccess{})
 }
 
 func NasAccessController(informerFactory informers.SharedInformerFactory, k8sClientSet *kubernetes.Clientset, ovhClient *ovh.Client, nasHaPartitions []NasPartition) (*NodeWathingController, error) {

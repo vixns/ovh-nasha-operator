@@ -47,7 +47,7 @@ EOF
 
 Add the NAS-HA list in a config map
 
-NAS-HA partitons are definded using 3 parameters, `name`, `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`).
+NAS-HA partitons are definded using 4 parameters, `name`, `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`) and `exclusive` (boolean, cleanup all accesses on operator on start).
 
 You can add any number of partitions as a serialized json array:
 
@@ -55,7 +55,7 @@ You can add any number of partitions as a serialized json array:
 kubectl apply -f - <<EOF
 apiVersion: v1
 data:
-  partitions.json: '[{"ip":"xxx.xxx.xxx.xxx","nasha":"zpool-XXXXX","name":"my-partition"}]'
+  partitions.json: '[{"ip":"xxx.xxx.xxx.xxx","nasha":"zpool-XXXXX","name":"my-partition","exclusive":true}]'
 kind: ConfigMap
 metadata:
   name: ovh-nasha
