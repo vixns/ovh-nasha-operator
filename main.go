@@ -1,19 +1,24 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"os"
+	"time"
+
 	"github.com/ovh/go-ovh/ovh"
 	"github.com/sirupsen/logrus"
-	"io/ioutil"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"os"
-	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Params
@@ -53,9 +58,14 @@ type NodeWathingController struct {
 
 func (c *NodeWathingController) Run(stopCh chan struct{}) error {
 	// Cleanup exclusive partitions
-	for _, p := range c.nasHaPartitions {
-		if p.Exclusive {
-			c.deleteAllPartitionAccesses(p)
+	nodesIps, err := c.getAllNodesIps()
+	if err != nil {
+		logrus.Errorf("Cannot get nodes ips, aborting cleanup. %v", err)
+	} else {
+		for _, p := range c.nasHaPartitions {
+			if p.Exclusive {
+				c.deleteAllUnkownPartitionAccesses(p, nodesIps)
+			}
 		}
 	}
 	// Starts all the shared informers that have been created by the factory so
@@ -68,35 +78,72 @@ func (c *NodeWathingController) Run(stopCh chan struct{}) error {
 	return nil
 }
 
-func (c *NodeWathingController) getPartitonAccessIps(p NasPartition) ([]string, error) {
+func (c *NodeWathingController) getAllNodesIps() ([]net.IP, error) {
+	nodes, err := c.k8sClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	var ips []net.IP
+	for _, n := range nodes.Items {
+		for _, a := range n.Status.Addresses {
+			if a.Type == v1.NodeExternalIP {
+				ips = append(ips, net.ParseIP(a.Address))
+				break
+			}
+		}
+	}
+	return ips, err
+}
+
+func (c *NodeWathingController) getPartitonAccessIps(p NasPartition) ([]net.IP, error) {
+	logrus.Debugf("Deleting accesses for partition %v", p)
 	var accesses []string
 	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", p.NasHa, p.Name), &accesses); err != nil {
 		return nil, err
 	}
-	return accesses, nil
+	var ips []net.IP
+	for _, a := range accesses {
+		ip, _, err := net.ParseCIDR(a)
+		if err != nil {
+			logrus.Errorf("Cannot parse ip %s - %v", a, err)
+		}
+		ips = append(ips, ip)
+	}
+	return ips, nil
 }
 
-func (c *NodeWathingController) deleteAllPartitionAccesses(p NasPartition) {
+func (c *NodeWathingController) deleteAllUnkownPartitionAccesses(p NasPartition, knownIps []net.IP) {
 	ips, err := c.getPartitonAccessIps(p)
+	logrus.Debugf("Partition ips: %v", ips)
 	if err != nil {
-		logrus.Errorf("Cannot get access list for partition %s/%s - %q", p.NasHa, p.Name, err)
+		logrus.Errorf("Cannot get access list for partition %s/%s - %v", p.NasHa, p.Name, err)
 	}
 	for _, i := range ips {
-		c.deletePartitionAccessForIp(p, i)
+		var isKownIP = false
+		for _, k := range knownIps {
+			if i.Equal(k) {
+				isKownIP = true
+			}
+		}
+		if !isKownIP {
+			c.deletePartitionAccessForIp(p, i)
+		}
 	}
 }
 
-func (c *NodeWathingController) addPartitionAccessForIp(p NasPartition, ip string) {
-	params := &AccessPosttParams{Ip: ip, AccessType: "readwrite"}
+func (c *NodeWathingController) addPartitionAccessForIp(p NasPartition, ip net.IP) {
+	logrus.Debugf("add access on %s/%s for ip %s", p.NasHa, p.Name, ip.String())
+	params := &AccessPosttParams{Ip: ip.String(), AccessType: "readwrite"}
 	if err := c.ovhClient.Post(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", p.NasHa, p.Name), &params, nil); err != nil {
-		logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", ip, p, err)
+		logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", ip.String(), p, err)
 	}
-	logrus.Infof("%s access on %s/%s nasha granted.", ip, p.NasHa, p.Name)
+	logrus.Infof("%s access on %s/%s nasha granted.", ip.String(), p.NasHa, p.Name)
 }
 
-func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip string) {
-	if err := c.ovhClient.Delete(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", p.NasHa, p.Name, ip), nil); err != nil {
-		logrus.Errorf("Error deleting access to ip %s on %s/%s nasha - %v", ip, p.NasHa, p.Name, err)
+func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip net.IP) {
+	logrus.Debugf("delete access on %s/%s for ip %s", p.NasHa, p.Name, ip.String())
+	if err := c.ovhClient.Delete(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", p.NasHa, p.Name, ip.String()), nil); err != nil {
+		logrus.Errorf("Error deleting access to ip %s on %s/%s nasha - %v", ip.String(), p.NasHa, p.Name, err)
 	}
 	logrus.Infof("%s access on %s/%s nasha deleted.", p, p.NasHa, p.Name)
 }
@@ -134,20 +181,20 @@ func (c *NodeWathingController) nodeDelete(obj interface{}) {
 	}
 }
 
-func (c *NodeWathingController) nodeExternalIp(node *v1.Node) (string, error) {
+func (c *NodeWathingController) nodeExternalIp(node *v1.Node) (net.IP, error) {
 	for _, a := range node.Status.Addresses {
 		if a.Type == v1.NodeExternalIP {
 			logrus.Debugf("Node %s external Ip: %s", node.Name, a.Address)
-			return a.Address, nil
+			return net.ParseIP(a.Address), nil
 		}
 	}
-	return "", fmt.Errorf("Cannot find externale Ip for node %s", node.Name)
+	return nil, fmt.Errorf("Cannot find externale Ip for node %s", node.Name)
 }
 
-func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip string) bool {
+func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip net.IP) bool {
 	var ipAccess PartitionAccess
-	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", part.NasHa, part.Name, ip), &ipAccess); err != nil {
-		logrus.Debugf("Error getting %s nasha ip access on partition %s for ip %s - %v", part.NasHa, part.Name, ip, err)
+	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", part.NasHa, part.Name, ip.String()), &ipAccess); err != nil {
+		logrus.Debugf("Error getting %s nasha ip access on partition %s for ip %s - %v", part.NasHa, part.Name, ip.String(), err)
 		return false
 	}
 	return ipAccess != (PartitionAccess{})
@@ -161,6 +208,7 @@ func NasAccessController(informerFactory informers.SharedInformerFactory, k8sCli
 		nodeInformer:    nodeInformer,
 		ovhClient:       ovhClient,
 		k8sClient:       k8sClientSet,
+		nasHaPartitions: nasHaPartitions,
 	}
 	_, err := nodeInformer.Informer().AddEventHandler(
 		// Your custom resource event handlers.
@@ -195,17 +243,18 @@ func main() {
 	nasListFile := OptionalEnv("OVH_NASHA_LIST", "/nasha/partitions.json")
 	rawNasList, err := ioutil.ReadFile(nasListFile)
 	if err != nil {
-		logrus.Fatalf("Cannot read %s file: %q", nasListFile, err)
+		logrus.Fatalf("Cannot read %s file: %v", nasListFile, err)
 	}
 
 	var partList []NasPartition
 	if err := json.Unmarshal(rawNasList, &partList); err != nil {
-		logrus.Fatalf("Cannot unmarshal nas list: %q", err)
+		logrus.Fatalf("Cannot unmarshal nas list: %v", err)
 	}
+	logrus.Debugf("NasHA Partitions list %v", partList)
 
 	ovhClient, err := ovh.NewEndpointClient("ovh-eu")
 	if err != nil {
-		logrus.Fatalf("Error connecting to OVH API: %q", err)
+		logrus.Fatalf("Error connecting to OVH API: %v", err)
 	}
 
 	// creates the in-cluster config
