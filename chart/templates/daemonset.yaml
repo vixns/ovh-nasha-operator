@@ -49,9 +49,9 @@ spec:
       serviceAccount: {{ template "ovh-nasha-operator.serviceAccountName" . }}
       serviceAccountName: {{ template "ovh-nasha-operator.serviceAccountName" . }}
       terminationGracePeriodSeconds: 30
-    updateStrategy:
-      rollingUpdate:
-        maxSurge: 0
-        maxUnavailable: 1
-      type: RollingUpdate
+  updateStrategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
 {{- end }}
