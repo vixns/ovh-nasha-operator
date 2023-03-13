@@ -20,53 +20,27 @@ The route-fixer DaemonSet detects routing to the NAS-HA ip and adds a route if n
 
 ## Installation
 
-### Configuration
+This operator requires an OVH API access, create one on <https://www.ovh.com/auth/api/createToken> with unlimited validity and GET+POST+DELETE rights on `/dedicated/nasha/*`
 
-This operator require an OVH API access, create one on <https://www.ovh.com/auth/api/createToken> with unlimited validity and GET+POST+DELETE rights on `/dedicated/nasha/*`
+NAS-HA partitions are definded using 4 parameters, `name` (the name of the partition), `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`) and `exclusive` (boolean, cleanup all unknown accesses on operator on start).
 
-Then, create a secret with these tokens
-
-```sh
-OVH_ENDPOINT=ovh-eu
-OVH_APPLICATION_KEY=xxxxxxx
-OVH_APPLICATION_SECRET=xxxxxxx
-OVH_CONSUMER_KEY=xxxxxxx
-kubectl apply -f - <<EOF
-apiVersion: v1
-data:
-  endpoint: $(echo -n "${OVH_ENDPOINT}" | base64 -w 0)
-  key: $(echo -n "${OVH_APPLICATION_KEY}" | base64 -w 0)
-  secret: $(echo -n "${OVH_APPLICATION_SECRET}" | base64 -w 0)
-  consumer: $(echo -n "${OVH_CONSUMER_KEY}" | base64 -w 0)
-kind: Secret
-metadata:
-  name: nasha-ovh.conf
-  namespace: kube-system
-EOF
-```
-
-Add the NAS-HA list in a config map
-
-NAS-HA partitons are definded using 4 parameters, `name`, `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`) and `exclusive` (boolean, cleanup all accesses on operator on start).
-
-You can add any number of partitions as a serialized json array:
-
-```sh
-kubectl apply -f - <<EOF
-apiVersion: v1
-data:
-  partitions.json: '[{"ip":"xxx.xxx.xxx.xxx","nasha":"zpool-XXXXX","name":"my-partition","exclusive":true}]'
-kind: ConfigMap
-metadata:
-  name: ovh-nasha
-  namespace: kube-system
-EOF
-```
-
-Continue installation using the helm chart
+### Helm
 
 ```sh
 helm upgrade --install ovh-nasha-operator ovh-nasha-operator \
   --repo https://nexus.vixns.net/repository/helm/ \
-  --namespace kube-system
+  --namespace ovh-system --create-namespace  \
+  --values -<<EOF
+ovh.api.token:
+  endpoint: ovh-eu
+  application_key: xxxx
+  application_secret: xxxx
+  consumer_key: xxxx
+cm:
+  partitions:
+    - name: my-partition
+      nasha: zpool-xxxx
+      ip: zxxx.xxx.xxx.xxx
+      exclusive: false
+EOF
 ```

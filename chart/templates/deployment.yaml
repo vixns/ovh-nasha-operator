@@ -28,10 +28,6 @@ spec:
             requests:
               cpu: 5m
               memory: 32Mi
-          volumeMounts:
-            - name: ovh-nasha
-              mountPath: /nasha
-              readOnly: true
           env:
             - name: OVH_ENDPOINT
               valueFrom:
@@ -54,11 +50,11 @@ spec:
                   name: nasha-ovh.conf
                   key: secret
             - name: LOG_LEVEL
-              value: debug
-      volumes:
-        - name: ovh-nasha
-          configMap:
-            name: ovh-nasha
+              value: {{ .Values.loglevel }}
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
       restartPolicy: Always
       schedulerName: default-scheduler
       serviceAccount: {{ template "ovh-nasha-operator.serviceAccountName" . }}

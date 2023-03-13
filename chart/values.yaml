@@ -5,6 +5,7 @@ image:
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: "ovh-nasha-operator"
+loglevel: info
 
 rbac:
   create: true
@@ -21,3 +22,25 @@ serviceAccount:
 # Fix network route for NAS-HA, trafic must be routed thru the public interface.
 routefixer:
   enable: true
+
+ovh.api.token:
+  create: true
+# Obtain access token on https://www.ovh.com/auth/api/createToken
+  endpoint: ovh-eu
+  application_key:
+  application_secret:
+  consumer_key:
+
+cm:
+  enable: true
+
+# partitions list
+  partitions: []
+#   - ip: 1.2.3.4
+#     nasha: zpool-XXXX
+#     name: my-partition
+#     exclusive: false
+#   - ip: 1.2.3.5
+#     nasha: zpool-XXXX
+#     name: my-partition2
+#     exclusive: true

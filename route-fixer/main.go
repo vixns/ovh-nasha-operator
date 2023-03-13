@@ -71,17 +71,6 @@ func main() {
 	// set global log level
 	logrus.SetLevel(ll)
 
-	nasListFile := OptionalEnv("OVH_NASHA_LIST", "/nasha/partitions.json")
-	rawNasList, err := ioutil.ReadFile(nasListFile)
-	if err != nil {
-		logrus.Fatalf("Cannot read %s file: %q", nasListFile, err)
-	}
-
-	var partList []NasPartition
-	if err := json.Unmarshal(rawNasList, &partList); err != nil {
-		logrus.Fatalf("Cannot unmarshal nas list: %q", err)
-	}
-
 	routes, err := netlink.RouteGet(net.IPv4(1, 1, 1, 1))
 	if err != nil {
 		logrus.Fatal("cannot load routing table: ", err)
@@ -90,7 +79,19 @@ func main() {
 
 	logrus.Debugf("Public gateway ip: %v", publicGatewayIp.String())
 
+	nasListFile := OptionalEnv("OVH_NASHA_LIST", "/nasha/partitions.json")
+
 	for {
+		rawNasList, err := ioutil.ReadFile(nasListFile)
+		if err != nil {
+			logrus.Fatalf("Cannot read %s file: %q", nasListFile, err)
+		}
+
+		var partList []NasPartition
+		if err := json.Unmarshal(rawNasList, &partList); err != nil {
+			logrus.Fatalf("Cannot unmarshal nas list: %q", err)
+		}
+
 		for _, partition := range partList {
 			if isRoutedVia(publicGatewayIp, net.ParseIP(partition.Ip)) {
 				logrus.Debugf("%s is already routed via public gateway, nothing to do.", partition.Ip)

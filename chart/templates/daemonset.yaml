@@ -37,6 +37,9 @@ spec:
             capabilities:
               add:
                 - NET_ADMIN
+          env:
+            - name: LOG_LEVEL
+              value: {{ .Values.loglevel }}
       volumes:
         - name: ovh-nasha
           configMap:

@@ -15,4 +15,11 @@ rules:
   - configmaps
   verbs:
   - get
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - list
+  - watch
 {{- end }}

@@ -1,0 +1,8 @@
+{{- if .Values.cm.enable -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ovh-nasha
+data:
+  partitions.json: '{{- .Values.cm.partitions | toJson }}'
+{{- end }}

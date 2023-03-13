@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
+	"reflect"
 	"time"
 
 	"github.com/ovh/go-ovh/ovh"
@@ -48,6 +48,15 @@ func OptionalEnv(envName string, defaultValue string) string {
 	return env
 }
 
+func RequiredEnv(envName string) string {
+	env, isSet := os.LookupEnv(envName)
+	if !isSet || len(env) == 0 {
+		logrus.Error("Error: Required env var ", envName, " is missing.")
+		os.Exit(1)
+	}
+	return env
+}
+
 type NodeWathingController struct {
 	informerFactory informers.SharedInformerFactory
 	nodeInformer    coreinformers.NodeInformer
@@ -76,6 +85,20 @@ func (c *NodeWathingController) Run(stopCh chan struct{}) error {
 		return fmt.Errorf("failed to sync")
 	}
 	return nil
+}
+
+func (c *NodeWathingController) Refresh() {
+	ips, err := c.getAllNodesIps()
+	if err != nil {
+		logrus.Errorf("Cannot get nodes ips, aborting refresh. %v", err)
+	}
+	for _, p := range c.nasHaPartitions {
+		for _, ip := range ips {
+			if !c.isNasPartitionAccessExists(p, ip) {
+				c.addPartitionAccessForIp(p, ip)
+			}
+		}
+	}
 }
 
 func (c *NodeWathingController) getAllNodesIps() ([]net.IP, error) {
@@ -200,7 +223,7 @@ func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip
 	return ipAccess != (PartitionAccess{})
 }
 
-func NasAccessController(informerFactory informers.SharedInformerFactory, k8sClientSet *kubernetes.Clientset, ovhClient *ovh.Client, nasHaPartitions []NasPartition) (*NodeWathingController, error) {
+func NasAccessController(informerFactory informers.SharedInformerFactory, k8sClientSet *kubernetes.Clientset, ovhClient *ovh.Client) (*NodeWathingController, error) {
 	nodeInformer := informerFactory.Core().V1().Nodes()
 
 	c := &NodeWathingController{
@@ -208,7 +231,7 @@ func NasAccessController(informerFactory informers.SharedInformerFactory, k8sCli
 		nodeInformer:    nodeInformer,
 		ovhClient:       ovhClient,
 		k8sClient:       k8sClientSet,
-		nasHaPartitions: nasHaPartitions,
+		nasHaPartitions: nil,
 	}
 	_, err := nodeInformer.Informer().AddEventHandler(
 		// Your custom resource event handlers.
@@ -240,18 +263,6 @@ func main() {
 	// set global log level
 	logrus.SetLevel(ll)
 
-	nasListFile := OptionalEnv("OVH_NASHA_LIST", "/nasha/partitions.json")
-	rawNasList, err := ioutil.ReadFile(nasListFile)
-	if err != nil {
-		logrus.Fatalf("Cannot read %s file: %v", nasListFile, err)
-	}
-
-	var partList []NasPartition
-	if err := json.Unmarshal(rawNasList, &partList); err != nil {
-		logrus.Fatalf("Cannot unmarshal nas list: %v", err)
-	}
-	logrus.Debugf("NasHA Partitions list %v", partList)
-
 	ovhClient, err := ovh.NewEndpointClient("ovh-eu")
 	if err != nil {
 		logrus.Fatalf("Error connecting to OVH API: %v", err)
@@ -269,16 +280,58 @@ func main() {
 	}
 
 	factory := informers.NewSharedInformerFactory(clientset, time.Hour*24)
-	controller, err := NasAccessController(factory, clientset, ovhClient, partList)
+	controller, err := NasAccessController(factory, clientset, ovhClient)
 	if err != nil {
 		logrus.Fatal(err)
 	}
 
+	listOptions := metav1.ListOptions{}
+	namespace := RequiredEnv("K8S_NAMESPACE")
+	watcher, err := clientset.CoreV1().ConfigMaps(namespace).Watch(context.TODO(), listOptions)
+	if err != nil {
+		logrus.Fatalf("Cannot watch configmaps: %v", err)
+	}
+
 	stop := make(chan struct{})
 	defer close(stop)
-	err = controller.Run(stop)
-	if err != nil {
-		logrus.Fatal(err)
+	for {
+		select {
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				logrus.Error("watcher stopped")
+				watcher, err = clientset.CoreV1().ConfigMaps(namespace).Watch(context.TODO(), listOptions)
+				logrus.Info("start new watcher")
+				if err != nil {
+					logrus.Errorf("Cannot watch configmaps: %v", err)
+				}
+				break
+			}
+			logrus.Debugf("Watch event: %v", event)
+			configMap, ok := event.Object.(*v1.ConfigMap)
+			if !ok {
+				logrus.Fatal("unexpected type")
+				continue
+			}
+			if configMap.Name == "ovh-nasha" {
+				// parse the configmap
+				var partList []NasPartition
+				rawData := []byte(configMap.Data["partitions.json"])
+				if err := json.Unmarshal(rawData, &partList); err != nil {
+					logrus.Fatalf("Cannot unmarshal nas list: %v", err)
+				}
+				if controller.nasHaPartitions == nil {
+					// first Event, start the controller
+					controller.nasHaPartitions = partList
+					err = controller.Run(stop)
+					if err != nil {
+						logrus.Fatal(err)
+					}
+				} else if !reflect.DeepEqual(partList, controller.nasHaPartitions) {
+					controller.nasHaPartitions = partList
+					// refresh all accesses
+					controller.Refresh()
+				}
+			}
+		}
 	}
-	select {}
 }
