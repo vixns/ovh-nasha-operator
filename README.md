@@ -28,7 +28,7 @@ NAS-HA partitions are definded using 4 parameters, `name` (the name of the parti
 
 ```sh
 helm upgrade --install ovh-nasha-operator ovh-nasha-operator \
-  --repo https://nexus.vixns.net/repository/helm/ \
+  --repo https://helm.vixns.net \
   --namespace ovh-system --create-namespace  \
   --values -<<EOF
 ovh.api.token:
