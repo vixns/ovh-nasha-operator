@@ -12,9 +12,9 @@ This operator runs as DaemonSet on every nodes, registering the node's External 
 
 ### Private networks
 
-When using private networks with gateway, all outgoing node traffic is flowing thru the private interface thru the gateway. This is nice for security concerns, and having a single source IP addess on yuour cluster.
+When using private networks with gateway, all outgoing node traffic is flowing thru the private interface via the gateway. This is nice for security concerns, and having a single source IP address on your cluster is convenient.
 
-The NAS-HA acces list only authorise Public Ip, you cannot join them from private network, yous have to route the traffic thru the public interface.
+The NAS-HA acces list only authorizes nodes public Ips', you cannot join them from private networks, you have to route the traffic thru the public interface.
 
 The route-fixer DaemonSet detects routing to the NAS-HA ip and adds a route if needed.
 
@@ -22,7 +22,7 @@ The route-fixer DaemonSet detects routing to the NAS-HA ip and adds a route if n
 
 This operator requires an OVH API access, create one on <https://www.ovh.com/auth/api/createToken> with unlimited validity and GET+POST+DELETE rights on `/dedicated/nasha/*`
 
-NAS-HA partitions are definded using 4 parameters, `name` (the name of the partition), `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`) and `exclusive` (boolean, cleanup all unknown accesses on operator on start).
+NAS-HA partition definition needs 4 parameters, `name` (the name of the partition), `ip` (the NAS-ha IPv4), `nasha` (the NAS-HA name, something like `zpool-xxxxx`) and `exclusive` (boolean, cleanup all unknown accesses on operator on start).
 
 ### Helm
 
