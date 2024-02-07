@@ -1,0 +1,24 @@
+apiVersion: v1
+entries:
+  ovh-nasha-operator:
+  - apiVersion: v2
+    appVersion: 0.2.9
+    created: "2024-02-07T11:11:13.150241958+01:00"
+    description: https://github.com/vixns/k8s/ovh-nasha-operator
+    digest: 64f37d86cd1c6f4fee011c90803933ca3ec81ee1d534f85a7da103f63f5fb3cd
+    name: ovh-nasha-operator
+    type: application
+    urls:
+    - https://vixns.github.io/ovh-nasha-operator/chart/ovh-nasha-operator-0.2.9.tgz
+    version: 0.2.9
+  - apiVersion: v2
+    appVersion: 0.2.8
+    created: "2024-02-07T11:11:13.149918983+01:00"
+    description: https://github.com/vixns/k8s/ovh-nasha-operator
+    digest: ab7d3ca16b145010c78fd9b00c2b5447483081b110dafb3fdbd2e17408d5c616
+    name: ovh-nasha-operator
+    type: application
+    urls:
+    - https://vixns.github.io/ovh-nasha-operator/chart/ovh-nasha-operator-0.2.8.tgz
+    version: 0.2.8
+generated: "2024-02-07T11:11:13.149499184+01:00"

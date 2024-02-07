@@ -4,5 +4,5 @@ kind: ConfigMap
 metadata:
   name: ovh-nasha
 data:
-  partitions.json: '{{- .Values.cm.partitions | toJson }}'
+  partitions.json: '{{- .Values.partitions | toJson }}'
 {{- end }}

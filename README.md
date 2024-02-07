@@ -6,7 +6,7 @@ NAS-HA are reduncdant servers over a ZFS Storage, exposed using NFS.
 
 Each partition has an IP access list, empty on creation. You have to add your OVHCLOUD service ( Dedicated Server, Public Cloud Instance, etc ... ) IPv4 address to this list to allow partition mounting.
 
-When using NFS on Kubernetes, each node ExternalIp must be added to this list. Due to the nature of kubernetes clusters ( ephemeral nodes and autoscaling ), this burden must be automated.
+When using NFS on Kubernetes, each node ExternalIp must be added to this list. Due to the nature of kubernetes clusters ( ephemeral nodes and autoscaling ).
 
 This operator runs as DaemonSet on every nodes, registering the node's External IP on the configured partition at runtime, unregistering on exit.
 
@@ -27,20 +27,28 @@ NAS-HA partition definition needs 4 parameters, `name` (the name of the partitio
 ### Helm
 
 ```sh
-helm upgrade --install ovh-nasha-operator ovh-nasha-operator \
-  --repo https://helm.vixns.net \
-  --namespace ovh-system --create-namespace  \
-  --values -<<EOF
-ovh.api.token:
+# create the secret first
+kubectl apply -f - << EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nasha-ovh.conf
+  namespace: ovh-system
+type: Opaque
+stringData:
   endpoint: ovh-eu
   application_key: xxxx
   application_secret: xxxx
   consumer_key: xxxx
-cm:
-  partitions:
-    - name: my-partition
-      nasha: zpool-xxxx
-      ip: zxxx.xxx.xxx.xxx
-      exclusive: false
 EOF
+
+helm repo add ovh-nasha-operator https://vixns.github.io/ovh-nasha-operator/chart/
+helm install ovh-nasha-operator ovh-nasha-operator \
+  --repo https://helm.vixns.net \
+  --namespace ovh-system \
+  --set partitions[0].name=mypartition \
+  --set partitions[0].nasha=zpool-xxxx \
+  --set partitions[0].ip=xxx.xxx.xxx.xxx \
+  --set partitions[0].exclusive=false
 ```
+

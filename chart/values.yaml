@@ -21,21 +21,30 @@ serviceAccount:
 
 # Fix network route for NAS-HA, trafic must be routed thru the public interface.
 routefixer:
-  enable: true
+  enable: false
 
-ovh.api.token:
-  create: true
-# Obtain access token on https://www.ovh.com/auth/api/createToken
-  endpoint: ovh-eu
-  application_key:
-  application_secret:
-  consumer_key:
+# use an existing secret for ovh api access
+#
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: nasha-ovh.conf
+# type: Opaque
+# stringData:
+#   endpoint: ovh-eu
+#   application_key: xxxx
+#   application_secret: xxxx
+#   consumer_key: xxxx
+
+ovh:
+  api:
+    secretName: nasha-ovh.conf
 
 cm:
   enable: true
 
 # partitions list
-  partitions: []
+partitions: []
 #   - ip: 1.2.3.4
 #     nasha: zpool-XXXX
 #     name: my-partition
