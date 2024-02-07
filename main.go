@@ -173,17 +173,21 @@ func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip ne
 
 func (c *NodeWathingController) nodeAdd(obj interface{}) {
 	node := obj.(*v1.Node)
+	_, ok := node.Labels["node-role.kubernetes.io/control-plane"]
+	if ok {
+		return
+	}
 	logrus.Infof("Node created: %s", node.Name)
-	externalIp, err := c.nodeExternalIp(node)
+	ip, err := c.nodeIp(node)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	for _, partition := range c.nasHaPartitions {
-		if !c.isNasPartitionAccessExists(partition, externalIp) {
-			logrus.Debugf("%s not in %s/%s access list.", &externalIp, partition.NasHa, partition.Name)
+		if !c.isNasPartitionAccessExists(partition, ip) {
+			logrus.Debugf("%s not in %s/%s access list.", &ip, partition.NasHa, partition.Name)
 			// node access missing, let's add it.
-			c.addPartitionAccessForIp(partition, externalIp)
+			c.addPartitionAccessForIp(partition, ip)
 		}
 	}
 }
@@ -191,28 +195,36 @@ func (c *NodeWathingController) nodeAdd(obj interface{}) {
 func (c *NodeWathingController) nodeDelete(obj interface{}) {
 	node := obj.(*v1.Node)
 	logrus.Infof("Node deleted: %s/%s", node.Name)
-	externalIp, err := c.nodeExternalIp(node)
+	ip, err := c.nodeIp(node)
 	if err != nil {
 		logrus.Error(err)
 		return
 	}
 	for _, partition := range c.nasHaPartitions {
-		if c.isNasPartitionAccessExists(partition, externalIp) {
+		if c.isNasPartitionAccessExists(partition, ip) {
 			// node no longer exists, delete access
-			c.deletePartitionAccessForIp(partition, externalIp)
+			c.deletePartitionAccessForIp(partition, ip)
 		}
 	}
 }
 
-func (c *NodeWathingController) nodeExternalIp(node *v1.Node) (net.IP, error) {
+func (c *NodeWathingController) nodeIp(node *v1.Node) (net.IP, error) {
 	for _, a := range node.Status.Addresses {
 		if a.Type == v1.NodeExternalIP {
 			logrus.Debugf("Node %s external Ip: %s", node.Name, a.Address)
 			return net.ParseIP(a.Address), nil
 		}
 	}
-	return nil, fmt.Errorf("Cannot find externale Ip for node %s", node.Name)
+	// Try internalIps if no externalIps
+	for _, a := range node.Status.Addresses {
+		if a.Type == v1.NodeInternalIP {
+			logrus.Debugf("Node %s internal Ip: %s", node.Name, a.Address)
+			return net.ParseIP(a.Address), nil
+		}
+	}
+	return nil, fmt.Errorf("Cannot find external or external Ip for node %s", node.Name)
 }
+
 
 func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip net.IP) bool {
 	var ipAccess PartitionAccess
