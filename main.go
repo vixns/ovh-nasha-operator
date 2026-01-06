@@ -171,13 +171,7 @@ func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip ne
 	logrus.Infof("%s access on %s/%s nasha deleted.", ip.String(), p.NasHa, p.Name)
 }
 
-func (c *NodeWathingController) nodeAdd(obj interface{}) {
-	node := obj.(*v1.Node)
-	_, ok := node.Labels["node-role.kubernetes.io/control-plane"] 
-	if ok {
-		return
-	}
-	logrus.Infof("Node created: %s", node.Name)
+func (c *NodeWathingController) addNodeToPartitions(node *v1.Node) {
 	ip, err := c.nodeIp(node)
 	if err != nil {
 		logrus.Error(err)
@@ -192,6 +186,16 @@ func (c *NodeWathingController) nodeAdd(obj interface{}) {
 	}
 }
 
+func (c *NodeWathingController) nodeAdd(obj interface{}) {
+	node := obj.(*v1.Node)
+	_, ok := node.Labels["node-role.kubernetes.io/control-plane"] 
+	if ok {
+		return
+	}
+	logrus.Infof("Node created: %s", node.Name)
+	c.addNodeToPartitions(node)
+}
+
 func (c *NodeWathingController) nodeUpdate(oldObj interface{}, newObj interface{}) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
@@ -199,7 +203,7 @@ func (c *NodeWathingController) nodeUpdate(oldObj interface{}, newObj interface{
 		return
 	}
 	logrus.Infof("Node updated: %s", newNode.Name)
-	c.nodeAdd(newNode)
+	c.addNodeToPartitions(newNode)
 }
 
 func (c *NodeWathingController) nodeDelete(obj interface{}) {
