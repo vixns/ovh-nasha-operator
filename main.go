@@ -188,7 +188,7 @@ func (c *NodeWathingController) addNodeToPartitions(node *v1.Node) {
 
 func (c *NodeWathingController) nodeAdd(obj interface{}) {
 	node := obj.(*v1.Node)
-	_, ok := node.Labels["node-role.kubernetes.io/control-plane"] 
+	_, ok := node.Labels["node-role.kubernetes.io/control-plane"]
 	if ok {
 		return
 	}
@@ -200,6 +200,10 @@ func (c *NodeWathingController) nodeUpdate(oldObj interface{}, newObj interface{
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
 	if oldNode.ResourceVersion == newNode.ResourceVersion {
+		return
+	}
+	_, ok := newNode.Labels["node-role.kubernetes.io/control-plane"]
+	if ok {
 		return
 	}
 	logrus.Infof("Node updated: %s", newNode.Name)
@@ -239,7 +243,6 @@ func (c *NodeWathingController) nodeIp(node *v1.Node) (net.IP, error) {
 	return nil, fmt.Errorf("Cannot find external or external Ip for node %s", node.Name)
 }
 
-
 func (c *NodeWathingController) isNasPartitionAccessExists(part NasPartition, ip net.IP) bool {
 	var ipAccess PartitionAccess
 	if err := c.ovhClient.Get(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", part.NasHa, part.Name, ip.String()), &ipAccess); err != nil {
@@ -263,7 +266,7 @@ func NasAccessController(informerFactory informers.SharedInformerFactory, k8sCli
 		// Your custom resource event handlers.
 		cache.ResourceEventHandlerFuncs{
 			// Called on creation
-			AddFunc: c.nodeAdd,
+			AddFunc:    c.nodeAdd,
 			UpdateFunc: c.nodeUpdate,
 			// Called on resource deletion.
 			DeleteFunc: c.nodeDelete,
