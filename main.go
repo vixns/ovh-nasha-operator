@@ -158,7 +158,7 @@ func (c *NodeWathingController) addPartitionAccessForIp(p NasPartition, ip net.I
 	logrus.Debugf("add access on %s/%s for ip %s", p.NasHa, p.Name, ip.String())
 	params := &AccessPosttParams{Ip: ip.String(), AccessType: "readwrite"}
 	if err := c.ovhClient.Post(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access", p.NasHa, p.Name), &params, nil); err != nil {
-		logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", ip.String(), p, err)
+		logrus.Errorf("Error addind access to ip %s on %s/%s nasha - %v", ip.String(), p.NasHa, p.Name, err)
 	}
 	logrus.Infof("%s access on %s/%s nasha granted.", ip.String(), p.NasHa, p.Name)
 }
@@ -168,12 +168,12 @@ func (c *NodeWathingController) deletePartitionAccessForIp(p NasPartition, ip ne
 	if err := c.ovhClient.Delete(fmt.Sprintf("/dedicated/nasha/%s/partition/%s/access/%s", p.NasHa, p.Name, ip.String()), nil); err != nil {
 		logrus.Errorf("Error deleting access to ip %s on %s/%s nasha - %v", ip.String(), p.NasHa, p.Name, err)
 	}
-	logrus.Infof("%s access on %s/%s nasha deleted.", p, p.NasHa, p.Name)
+	logrus.Infof("%s access on %s/%s nasha deleted.", ip.String(), p.NasHa, p.Name)
 }
 
 func (c *NodeWathingController) nodeAdd(obj interface{}) {
 	node := obj.(*v1.Node)
-	_, ok := node.Labels["node-role.kubernetes.io/control-plane"]
+	_, ok := node.Labels["node-role.kubernetes.io/control-plane"] 
 	if ok {
 		return
 	}
@@ -192,9 +192,19 @@ func (c *NodeWathingController) nodeAdd(obj interface{}) {
 	}
 }
 
+func (c *NodeWathingController) nodeUpdate(oldObj interface{}, newObj interface{}) {
+	oldNode := oldObj.(*v1.Node)
+	newNode := newObj.(*v1.Node)
+	if oldNode.ResourceVersion == newNode.ResourceVersion {
+		return
+	}
+	logrus.Infof("Node updated: %s", newNode.Name)
+	c.nodeAdd(newNode)
+}
+
 func (c *NodeWathingController) nodeDelete(obj interface{}) {
 	node := obj.(*v1.Node)
-	logrus.Infof("Node deleted: %s/%s", node.Name)
+	logrus.Infof("Node deleted: %s", node.Name)
 	ip, err := c.nodeIp(node)
 	if err != nil {
 		logrus.Error(err)
@@ -250,6 +260,7 @@ func NasAccessController(informerFactory informers.SharedInformerFactory, k8sCli
 		cache.ResourceEventHandlerFuncs{
 			// Called on creation
 			AddFunc: c.nodeAdd,
+			UpdateFunc: c.nodeUpdate,
 			// Called on resource deletion.
 			DeleteFunc: c.nodeDelete,
 		},
